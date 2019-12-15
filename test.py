@@ -12,40 +12,47 @@ import torchvision.models as models
 from torch.utils.data import DataLoader
 
 from dataloader import DeepFakeDataset
-
+from models import resnet
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--batch_size', type=int, required=True)
+parser.add_argument('--batch_size', type=int, default=64)
 parser.add_argument('--epochs', type=int, default=20)
 parser.add_argument('--lr', type=float, default=3e-2)
 parser.add_argument("--gpus", type=str,
                     help="Pass in like 1,2,3...")
-
+parser.add_argument("--model", type=str, required=True)
 def train(args):
     path = '/shared/gefenkohavi/data/fb_dfd/'
     
     model_transforms = transforms.Compose([
-        transforms.Resize((299, 299)),
+#        transforms.Resize((299, 299)),
+        transforms.Resize((480, 480)),
         transforms.ToTensor(),
         transforms.Normalize([0.5]*3, [0.5]*3)])
 
     
-    trainset = DeepFakeDataset(path=path, split='train', oversample=True, transform=model_transforms)
-    trainloader = DataLoader(trainset, batch_size=args.batch_size, shuffle=True, num_workers=4, pin_memory=True)
+#     trainset = DeepFakeDataset(path=path, split='train', oversample=True, transform=model_transforms)
+#     trainloader = DataLoader(trainset, batch_size=args.batch_size, shuffle=True, num_workers=4, pin_memory=True)
     testset = DeepFakeDataset(path=path, split='test', oversample=True, transform=model_transforms)
-    testloader = DataLoader(testset, batch_size=args.batch_size, shuffle=True, num_workers=4, pin_memory=True)
+    weights = testset.weights  
+    weights = torch.DoubleTensor(weights)                                       
+    sampler = torch.utils.data.sampler.WeightedRandomSampler(weights, len(weights))
+    testloader = DataLoader(testset, batch_size=args.batch_size, num_workers=8, pin_memory=True, sampler=sampler)
     
-    model = models.resnet18(pretrained=True)
-    model.fc = nn.Linear(in_features=512, out_features=1, bias=True)
-    model = torch.load('model_resnet18.pth')
+
+#     model = models.resnet18(pretrained=True)
+#     model.fc = nn.Linear(in_features=512, out_features=1, bias=True)
+    #model = resnet._resnet('resnet18', resnet.BasicBlock, [1, 2, 2, 2], pretrained=False, progress=False)
+    #model.fc = nn.Sequential(nn.Dropout(), nn.Linear(in_features=512, out_features=1, bias=True))
+    model = torch.load(args.model)
     model = model.cuda()
-    
+    model = model.eval()
     
     criterion = nn.BCEWithLogitsLoss()
 
     running_loss = []
     with torch.no_grad():
-        for i, data in enumerate(trainloader):
+        for i, data in enumerate(testloader):
             inputs, labels = data
             inputs = inputs.cuda()
             labels = labels.type(torch.FloatTensor).cuda()

@@ -6,13 +6,14 @@ from tqdm import tqdm
 from PIL import Image
 import matplotlib.pyplot as plt
 from skimage import io, transform
+from collections import defaultdict
 from torch.utils.data import Dataset
 from torchvision import transforms, utils
 
 class DeepFakeDataset(Dataset):
     """Face Landmarks dataset."""
     
-    methods = ['original_videos', 'method_A']
+    methods = ['original_videos', 'method_A']#, 'method_B']
     label2int = {'real': 1, 'fake': 0}
 
     def __init__(self, path, split='train', oversample=True, transform=None):
@@ -30,9 +31,18 @@ class DeepFakeDataset(Dataset):
         with open(path + '/dataset.json') as f:
             self.meta = json.load(f)
             
+            
+        self.rate = defaultdict(int)
+        self.weights = []
         self.data = []
         for method in self.methods:
             self.crawl_dir(self.path, method)
+        total = sum(v for v in self.rate.values())
+        for item in self.data:
+            self.weights.append(total/self.rate[item['label']])
+       
+            
+        
 
     def crawl_dir(self, path, method):
         print('Crawling', method)
@@ -45,6 +55,7 @@ class DeepFakeDataset(Dataset):
                 if info['set'] == self.split:
                     files = [{'pth': '/'.join([root, f]), 'label': info['label']} for f in files]
                     self.data.extend(files)
+                    self.rate[info['label']] += len(files)
             else:
                 print(video_pth, 'not found!')
                 1/0
